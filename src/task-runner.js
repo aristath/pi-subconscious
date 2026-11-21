@@ -98,7 +98,7 @@ async function worker(input) {
     let settle, failure;
     const settled = new Promise(resolve => { settle = resolve; });
     peer = new PiProcess({ cwd: input.executionCwd, command: input.piCommand ?? 'pi',
-      args: ['--approve', '--session-dir', directory, ...(previous ? ['--session', previous] : []), ...(input.task.model ? ['--model', input.task.model] : []), '-e', rpcExtension,
+      args: ['--approve', '--session-dir', directory, ...(previous ? ['--session', previous] : []), ...(input.task.model ? ['--model', input.task.model] : []), ...(input.task.thinking ? ['--thinking', input.task.thinking] : []), '-e', rpcExtension,
         ...(input.task.soul === 'none' ? ['--soul', 'none'] : []),
         '-e', fileURLToPath(new URL('./task-runtime.js', import.meta.url)), '--scheduled-task', input.task.path],
       env: { ...process.env, PI_CODING_AGENT_DIR: input.agentDir }, onEvent: event => {

@@ -95,6 +95,11 @@ SOUL instructions, or SOUL tools. This requires pi-modular-soul with
 Other Pi instructions and tools still apply. Omit the header for normal SOUL
 loading from the execution profile.
 
+Add `@thinking <level>` to an inference task header to set the reasoning level
+for every run: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`.
+It uses Pi's native `--thinking` option, is clamped to the model's capabilities,
+and does not change profile or global defaults. Omit it for the profile default.
+
 ### Execution profile
 
 The host can supply an `executionCwd` for inference. Pi loads that working directory's normal `.pi/settings.json`, extensions, SOUL and tools. The task function still receives its originating owner's `cwd` and `user`. Return explicit source paths in the prompt when referring to that owner's files. Execution profile configuration is separate from task ownership and saved task progress.

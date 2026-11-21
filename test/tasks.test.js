@@ -33,6 +33,9 @@ test('task headers support both modes, session choices, fixed intervals and cale
   assert.equal(taskHeader(header('5m','inference').replace('@mode inference','@mode inference\n * @soul none')).soul,'none');
   assert.equal(taskHeader(header()).soul,undefined);
   assert.throws(()=>taskHeader(header('5m','inference').replace('@mode inference','@mode inference\n * @soul unknown')),/@soul/);
+  assert.equal(taskHeader(header('5m','inference').replace('@mode inference','@mode inference\n * @thinking low')).thinking,'low');
+  assert.equal(taskHeader(header()).thinking,undefined);
+  assert.throws(()=>taskHeader(header('5m','inference').replace('@mode inference','@mode inference\n * @thinking turbo')),/@thinking/);
   assert.deepEqual(taskHeader('/**\n * @start_time 02:00\n * @mode deterministic\n */'), {start_time:'02:00',mode:'deterministic',session:'fresh'});
   assert.throws(()=>taskHeader(header().replace('@every 5 minutes','@every 5 minutes\n * @quiet_window 1 month')), /fixed duration/);
 });

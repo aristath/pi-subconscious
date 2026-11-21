@@ -62,6 +62,11 @@ It also applies when continuing a task with a saved SOUL selection. Omit it to
 keep the execution profile's normal SOUL behavior. Other Pi instructions and
 tools remain available. Requires pi-modular-soul with `--soul none` support.
 
+Optional `@thinking <level>` sets the reasoning level for each inference run:
+`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. It uses Pi's
+native `--thinking` option, is clamped to the model's capabilities, and does
+not change profile or global defaults. Omit it for the profile default.
+
 The host application uses `TaskScheduler` from `src/tasks.js` and `runTask` from
 `src/task-runner.js`. Its foreground admission uses the scheduler’s existing
 `Gate`. Task execution happens in a separate process using the selected execution profile.
