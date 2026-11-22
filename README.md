@@ -7,7 +7,8 @@ native settings, sessions, models, and configured tools.
 
 An embedding application creates a `TaskScheduler`. It reads
 `tasks/*.js` and `tasks/*.ts` inside each user’s profile, runs one due task at a
-time, and gives frontend chats priority between Pi turns (one model response and its tools). Scheduled tasks do not
+time, and lets background jobs start only while no frontend chat is active. Foreground turns are
+never held back: queueing concurrent inference is the model backend's job, not the gate's. Scheduled tasks do not
 need a separate service or a per-user scheduler.
 
 [The scheduled-tasks skill](skills/tasks/SKILL.md) is the complete authoring guide:
@@ -68,13 +69,15 @@ native `--thinking` option, is clamped to the model's capabilities, and does
 not change profile or global defaults. Omit it for the profile default.
 
 The host application uses `TaskScheduler` from `src/tasks.js` and `runTask` from
-`src/task-runner.js`. Its foreground admission uses the scheduler’s existing
-`Gate`. Task execution happens in a separate process using the selected execution profile.
+`src/task-runner.js`. Foreground sessions register a busy claim on the scheduler’s
+existing `Gate`; they are never made to wait for background work, so extensions stay
+hardware-agnostic and the model backend owns inference queueing. Task execution happens
+in a separate process using the selected execution profile.
 A task worker holds the existing process lock while it runs.
 
 Pass the same `gate` to `TaskScheduler` and each reflection `startService(config, { gate })`
 to share one FIFO background queue across users. A background job keeps its place
-while yielding to chats between turns. Pi handles tool execution, compaction,
+while no chat is active. Pi handles tool execution, compaction,
 retry and cancellation; tools do not acquire scheduling locks.
 Set `subconscious.autoStart: false` in Pi settings when the host owns the
 coordinator, so standalone Pi clients cannot start a competing daemon while it restarts.
@@ -85,7 +88,7 @@ without changing its regular schedule. Hosts connect it with
 `startService(config, { gate, enqueueTask: (name, key) => scheduler.request(userId, name, key) })`.
 Requests are saved in the owner's existing task progress file and submitted to
 the shared queue immediately, without waiting for a scheduler tick. Scheduled
-time and quiet periods are skipped; chat priority remains.
+time and quiet periods are skipped; background jobs still wait for active chats.
 
 ## Install
 

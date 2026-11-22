@@ -60,7 +60,7 @@ test('the foreground tool creates an actual receipt tied to its persisted invoca
   assert.equal(result.details.id, reflections[0].id);
 });
 
-test('a foreground SDK request waits for only the active private step and unregisters on shutdown', async t => {
+test('a foreground SDK request proceeds during an active private step and unregisters on shutdown', async t => {
   const f = fixture(t, { initialRestMs: 60000 });
   const service = await startService(f.config, { schedule: false });
   const entered = deferred();
@@ -68,9 +68,9 @@ test('a foreground SDK request waits for only the active private step and unregi
   t.after(async () => { await closeSession(session); await service.close(); });
   const release = await service.coordinator.gate.privateStep('model', 'synthetic-active-generation');
   const prompt = session.prompt('A synthetic foreground question.');
-  await new Promise(resolve => setTimeout(resolve, 150));
+  await entered.promise; // admitted without waiting for the in-flight private step
   assert.equal(service.coordinator.gate.busy(), true);
-  release(); await entered.promise; await prompt;
+  release(); await prompt;
   assert.equal(service.coordinator.gate.busy(), false);
 });
 

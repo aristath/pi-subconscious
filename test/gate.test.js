@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { Gate } from '../src/gate.js';
 import { deferred } from './helpers.js';
 
-test('foreground waits only for the current private step and blocks further steps', async () => {
+test('foreground is admitted immediately even mid-step and blocks further steps until idle', async () => {
   const gate = new Gate();
   const release = await gate.privateStep('model', 'private-model');
-  const foreground = gate.foreground('user', { pid: 123, file: 'synthetic', sessionId: 's' });
+  await gate.foreground('user', { pid: 123, file: 'synthetic', sessionId: 's' });
+  assert.equal(gate.busy(), true, 'foreground registers busy without waiting for the active step');
   let entered = false;
   const next = gate.privateStep('tool', 'pending-tool').then(release => { entered = true; return release; });
-  assert.equal(gate.busy(), true);
-  release(); await foreground;
+  release();
   await Promise.resolve();
   assert.equal(entered, false);
   gate.update('user', { pid: 123, busy: false });

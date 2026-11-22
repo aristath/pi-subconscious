@@ -66,7 +66,7 @@ test('the detached reflection daemon finishes a native turn and preserves pause 
   assert.equal(count(), pausedCount);
 });
 
-test('native parallel tools finish together; tasks and reflections share a queue and yield to chats between turns', { timeout: 30000 }, async t => {
+test('native parallel tools finish together; tasks and reflections share a queue and yield to active chats', { timeout: 30000 }, async t => {
   const gate = new Gate();
   let service, scheduler, root;
   t.after(async () => {
@@ -127,8 +127,10 @@ test('native parallel tools finish together; tasks and reflections share a queue
   assert.equal(events().some(event => event.phase === 'reflection'), false);
   let chatStarted = false;
   const chat = gate.foreground('chat', { pid: process.pid }).then(() => { chatStarted = true; });
-  assert.equal(chatStarted, false, 'chat interrupted tools in the current turn');
-  writeFileSync(join(f.root, 'release-task'), ''); await chat;
+  await chat;
+  assert.equal(chatStarted, true, 'foreground is admitted immediately, even mid-turn');
+  assert.equal(gate.busy(), true);
+  writeFileSync(join(f.root, 'release-task'), '');
   await until(() => gate.waiters.size >= 2); // Next task turn and queued reflection.
   assert.equal(events().filter(event => event.kind === 'model').length, 1, 'background continued while chat was busy');
   gate.remove('chat'); await task;

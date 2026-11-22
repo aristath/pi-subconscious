@@ -39,9 +39,12 @@ export class Gate {
       return await work();
     } finally { this.jobs.splice(this.jobs.indexOf(job), 1); this.wake(); }
   }
+  // Foreground sessions only register a busy claim; they never wait for
+  // background work. Queueing concurrent inference is the model backend's
+  // job, so this gate stays hardware-agnostic. The busy claim still lets
+  // private steps yield to active chats before starting.
   async foreground(id, data, signal) {
     this.update(id, { ...data, busy: true });
-    while (this.active && !this.stopping) await this.wait(signal);
     if (this.stopping || signal?.aborted) throw new Error('Service stopping');
   }
   async privateStep(kind, id, signal, paused = this.paused) {
