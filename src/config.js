@@ -10,7 +10,6 @@ export const INTERNAL_TOOLS = [
   'subconscious_return', 'subconscious_finish', 'subconscious_start_chat',
   'subconscious_chats',
 ];
-export const DEFAULT_TOOLS = ['read', 'ls', 'find', 'grep'];
 export function expandPath(path, base = process.cwd()) {
   if (typeof path !== 'string' || !path.trim()) throw new Error('Expected a nonempty path');
   if (path === '~') return homedir();
@@ -50,11 +49,9 @@ export function loadConfig(path = defaultConfigPath(), overrides = {}) {
     piCommand: raw.piCommand ?? 'pi',
     initiallyPaused: raw.initiallyPaused === true,
     errorRetryMs: raw.errorRetryMs ?? 30000,
-    allowedTools: raw.allowedTools ?? DEFAULT_TOOLS,
   };
   assertProfilePath(config, dataDir);
   if (!Number.isFinite(config.errorRetryMs) || config.errorRetryMs < 0) throw new Error('errorRetryMs must be a nonnegative finite number');
-  if (!Array.isArray(config.allowedTools) || config.allowedTools.some(t => typeof t !== 'string' || !/^[\w.-]+$/.test(t))) throw new Error('allowedTools must contain exact tool names, without wildcards');
   config.storeId = createHash('sha256').update(dataDir).digest('hex');
   config.socketPath = process.platform === 'win32'
     ? `\\\\.\\pipe\\pi-subconscious-${config.storeId.slice(0, 24)}`

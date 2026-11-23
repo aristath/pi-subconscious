@@ -31,8 +31,8 @@ test('an invalid mutation does not lose previously accepted state', t => {
   assert.equal(new Store(config).state.paused, true);
 });
 
-test('tool configuration requires exact names', t => {
+test('error-retry configuration requires a nonnegative finite number', t => {
   const f = fixture(t);
-  assert.throws(() => f.writeConfig({ allowedTools: ['*'] }), /without wildcards/);
-  assert.throws(() => f.writeConfig({ allowedTools: [42] }), /exact tool names/);
+  assert.throws(() => f.writeConfig({ errorRetryMs: -1 }), /nonnegative/);
+  assert.throws(() => f.writeConfig({ errorRetryMs: 'soon' }), /nonnegative/);
 });
