@@ -1,7 +1,7 @@
-// Loaded only as an extension inside the system Pi process.
+// Static session operations on Pi's own SDK classes. They run host-side in the
+// embedding application and inside Pi processes alike; Pi owns the format.
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { existsSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
 import { PRIVATE_MARKER, RETURN_TYPE } from './private-extension.js';
 import { INTERNAL_TOOLS } from './config.js';
 

@@ -25,6 +25,7 @@
     "./client": "./src/client.js",
     "./service": "./src/service.js",
     "./rpc": "./src/rpc.js",
+    "./native": "./src/native.js",
     "./rpc-extension": "./src/rpc-extension.js"
   },
   "pi": {

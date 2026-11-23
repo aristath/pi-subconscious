@@ -2,11 +2,10 @@ import { createServer } from 'node:http';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, chmodSync, statSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
-import { piRequest } from './rpc.js';
+import { piRequest } from './native.js';
 import { Store, text } from './store.js';
 import { Gate } from './gate.js';
-import { assertProfilePath, expandPath } from './config.js';
+import { assertProfilePath } from './config.js';
 import { PiSessions } from './sessions.js';
 
 function alive(pid) { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } }
@@ -206,7 +205,7 @@ export class Coordinator {
     if (!row) return false;
     this.running = true;
     try {
-      await this.gate.background(this.config.storeId + '/' + row.id, async () => {
+      await this.gate.background(`${this.config.storeId}/${row.id}`, async () => {
         if (this.stopping || this.store.state.paused) return;
         this.store.change(() => { const current = this.store.row(row.id); current.wakeId ??= randomUUID(); current.inProgress = true; });
         const result = await this.sessions.step(this.store.row(row.id));

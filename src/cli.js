@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Client } from './client.js';
 import { loadConfig } from './config.js';
-import { piRequest } from './rpc.js';
+import { piRequest } from './native.js';
 import { dirname } from 'node:path';
 import { durableWrite } from './store.js';
 

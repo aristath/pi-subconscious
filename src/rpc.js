@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 export const rpcExtension = fileURLToPath(new URL('./rpc-extension.js', import.meta.url));
 // Transport only: Pi owns settings, sessions, extensions and the agent loop.
-// A single implementation serves both short-lived one-shot requests (piRequest) and the
-// long-lived web worker; Pi's own stdout events stream to onEvent.
+// Long-lived web/task/private workers use this wire; static host-side session
+// and configuration operations use the SDK directly (native.js).
 export class PiProcess {
   constructor({ cwd = process.cwd(), command = 'pi', args = [], env = process.env, spawn = spawnChild, onEvent = () => {} } = {}) {
     this.pending = new Map(); this.onEvent = onEvent; this.inputTail = Promise.resolve();
@@ -68,6 +68,8 @@ export class PiProcess {
       this.write({ id, type, ...data }).catch(error => { if (timer) clearTimeout(timer); this.pending.delete(id); reject(error); });
     });
   }
+  // Live-session operations that need Pi's ExtensionCommandContext (tools,
+  // settings, session.flush) round-trip through the worker's command extension.
   async invoke(method, args = {}) {
     const { commands } = await this.request('get_commands');
     if (!commands.some(command => command.name === 'pi-command')) throw new Error('The native Pi command extension failed to load.');
@@ -78,11 +80,4 @@ export class PiProcess {
     });
   }
   async close() { this.child.stdin.end(); await this.exited; }
-}
-export async function piRequest(config, method, args = {}) {
-  const peer = new PiProcess({ cwd: config.workspace ?? config.cwd, command: config.piCommand ?? 'pi',
-    args: ['--no-session', '--no-extensions', '--offline', '--approve', '-e', rpcExtension],
-    env: { ...process.env, ...(config.agentDir ? { PI_CODING_AGENT_DIR: config.agentDir } : {}) } });
-  try { await peer.request('get_state'); return await peer.invoke(method, args); }
-  finally { await peer.close(); }
 }

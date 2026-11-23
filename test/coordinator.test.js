@@ -7,7 +7,7 @@ import { Coordinator, startService } from '../src/service.js';
 import { Client } from '../src/client.js';
 import { Store } from '../src/store.js';
 import { originContext, nativeOperations } from '../src/native-operations.js';
-import { persistSession } from '../src/rpc-extension.js';
+import { persistSession } from '../src/native.js';
 import { RETURN_TYPE } from '../src/private-extension.js';
 import { fixture, deferred, call, assistantMessage, syntheticModel } from './helpers.js';
 
