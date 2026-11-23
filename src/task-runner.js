@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
-import { readFile, open, mkdir, realpath } from 'node:fs/promises';
+import { mkdir, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PiProcess, rpcExtension } from './rpc.js';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { PiProcess } from './rpc.js';
 import { acquireLock } from './service.js';
-import { TASK_MARKER } from './config.js';
+import { persistSession } from './native.js';
+import { Client } from './client.js';
+import { loadConfig } from './config.js';
 
 // The application owns admission; the child owns one user's cwd and Pi runtime.
 export async function runTask(task, context, control) {
@@ -14,27 +17,25 @@ export async function runTask(task, context, control) {
     env: { ...process.env, PI_CODING_AGENT_DIR: context.agentDir },
   });
   let failure, done = false;
-  const held = new Map();
   const send = message => { if (child.connected) child.send(message, () => {}); };
   child.stdout.on('data', data => process.stdout.write(data));
   child.stderr.on('data', data => process.stderr.write(data));
   child.on('message', message => {
-    if (message.type === 'enter') {
-      void control.gate.privateStep(message.kind, task.user.id+'/'+task.name).then(release => {
-        if (!child.connected) { release(); return; }
-        held.set(message.id, release); send({ type: 'admitted', id: message.id });
-      }, error => send({ type: 'admitted', id: message.id, error: error.message }));
-    } else if (message.type === 'release') { held.get(message.id)?.(); held.delete(message.id); }
-    else if (message.type === 'initialized') control.release();
+    if (message.type === 'initialized') control.release();
     else if (message.type === 'session') {
       try { control.saveSession(message.file); send({ type: 'saved', id: message.id }); }
       catch (error) { failure = error; send({ type: 'saved', id: message.id, error: error.message }); }
     } else if (message.type === 'done') { done = true; if (message.error) failure = new Error(message.error); }
   });
+  const configPath = task.mode === 'inference' ? (context.subconsciousConfig ?? join(context.executionCwd ?? context.workspace, '.pi/settings.json')) : undefined;
   const result = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', (code, signal) => {
-      for (const release of held.values()) release();
+      // A killed task Pi cannot release its own admitted turn; the coordinator
+      // clears any step this task still holds so the queue never wedges.
+      if (task.mode === 'inference') {
+        void new Client(loadConfig(configPath)).call('task.cleanup', { id: `${task.user.id}/${task.name}` }).catch(() => {});
+      }
       if (failure) reject(failure);
       else if (!done || code !== 0) reject(new Error(`Task worker stopped (${signal ?? code}); this occurrence will not be replayed.`));
       else resolve();
@@ -42,7 +43,7 @@ export async function runTask(task, context, control) {
   });
   send({ type: 'run', task: { ...task, user: { id: task.user.id, admin: task.user.admin } },
     executionCwd: context.executionCwd ?? context.workspace, piCommand: context.piCommand, agentDir: context.agentDir, sessionFile: control.sessionFile,
-    lockDir: context.taskLockDir });
+    lockDir: context.taskLockDir, configPath });
   return result;
 }
 
@@ -57,19 +58,13 @@ async function worker(input) {
   });
   process.on('message', message => {
     const reply = waiting.get(message.id);
-    if (reply) { waiting.delete(message.id); message.error ? reply.reject(new Error(message.error)) : reply.resolve(); }
+    if (reply) { waiting.delete(message.id); if (message.error) reply.reject(new Error(message.error)); else reply.resolve(); }
   });
   const ask = message => new Promise((resolve, reject) => {
     if (!process.connected) { reject(new Error('Scheduler stopped')); return; }
     const id = String(++sequence); waiting.set(id, { resolve, reject });
     process.send({ ...message, id });
   });
-  const gate = { async privateStep(kind) {
-    if (!process.connected) throw new Error('Scheduler stopped');
-    const id = String(++sequence);
-    await new Promise((resolve, reject) => { waiting.set(id, { resolve, reject }); process.send({ type: 'enter', kind, id }); });
-    return () => { if (process.connected) process.send({ type: 'release', id }); };
-  } };
   let peer, releaseLock;
   try {
     if (input.lockDir) releaseLock = acquireLock({ dataDir: input.lockDir });
@@ -94,37 +89,30 @@ async function worker(input) {
     }
     const previous = input.sessionFile && await realpath(input.sessionFile);
     if (previous) check(previous);
-    const held = new Map();
+    // Persist the task session host-side before Pi opens it: the file exists
+    // with its header, so --session reopens exactly this conversation.
+    const file = previous ?? (() => {
+      const manager = SessionManager.create(input.executionCwd, directory);
+      persistSession(manager); return manager.getSessionFile();
+    })();
     let settle, failure;
     const settled = new Promise(resolve => { settle = resolve; });
     peer = new PiProcess({ cwd: input.executionCwd, command: input.piCommand ?? 'pi',
-      args: ['--approve', '--session-dir', directory, ...(previous ? ['--session', previous] : []), ...(input.task.model ? ['--model', input.task.model] : []), ...(input.task.thinking ? ['--thinking', input.task.thinking] : []), '-e', rpcExtension,
+      args: ['--approve', '--session-dir', directory, '--session', file, ...(input.task.model ? ['--model', input.task.model] : []), ...(input.task.thinking ? ['--thinking', input.task.thinking] : []),
         ...(input.task.soul === 'none' ? ['--soul', 'none'] : []),
-        '-e', fileURLToPath(new URL('./task-runtime.js', import.meta.url)), '--scheduled-task', input.task.path],
+        '-e', fileURLToPath(new URL('./task-runtime.js', import.meta.url)), '--scheduled-task', input.task.path,
+        '--task-owner', input.task.user.id, '--task-name', input.task.name, ...(input.configPath ? ['--subconscious-config', input.configPath] : [])],
       env: { ...process.env, PI_CODING_AGENT_DIR: input.agentDir }, onEvent: event => {
         if (event.type === 'agent_settled') settle();
-        if (event.type === 'extension_ui_request' && event.title?.startsWith('pi-task:enter:')) {
-          const token = String(++sequence);
-          void gate.privateStep(event.title.split(':').at(-1)).then(release => {
-            held.set(token, release); peer.send({ type: 'extension_ui_response', id: event.id, value: token });
-          }, error => { failure = error; peer.send({ type: 'extension_ui_response', id: event.id, cancelled: true }); });
-        }
-        if (event.type === 'extension_ui_request' && event.method === 'notify' && event.message?.startsWith('pi-task:release:')) {
-          const token = event.message.slice('pi-task:release:'.length); held.get(token)?.(); held.delete(token);
-        }
         if (event.type === 'extension_error') failure = new Error(event.error);
       } });
     await peer.request('get_state');
-    const file = await peer.invoke('session.flush');
-    const switched = await peer.request('switch_session', { sessionPath: file });
-    if (switched.cancelled) throw new Error('Pi could not reopen the task session.');
     await ask({ type: 'session', file });
     process.send({ type: 'initialized' });
     const { commands } = await peer.request('get_commands');
     if (!commands.some(command => command.name === 'task-run')) throw new Error('The task extension failed to load.');
     await peer.request('prompt', { message: '/task-run ' + JSON.stringify({ prompt, owner: { id: input.task.user.id, cwd: input.task.folder, task: input.task.name } }) });
     await Promise.race([settled, peer.exited.then(() => { throw new Error('Task Pi stopped before settling.'); })]);
-    for (const release of held.values()) release();
     if (failure) throw failure;
     const { messages } = await peer.request('get_messages'), last = messages.findLast(message => message.role === 'assistant');
     if (['error', 'aborted'].includes(last?.stopReason)) throw new Error(last.errorMessage ?? 'Task inference did not finish');

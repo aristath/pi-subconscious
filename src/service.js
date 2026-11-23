@@ -153,6 +153,13 @@ export class Coordinator {
         return {};
       }
       case 'private.release': this.steps.get(params.token)?.release(); this.steps.delete(params.token); return { released: true };
+      case 'task.enter': {
+        const release = await this.gate.privateStep('turn', params.id, this.signal, () => false);
+        this.steps.set(params.token, { id: params.id, release });
+        return { admitted: true };
+      }
+      case 'task.release': this.steps.get(params.token)?.release(); this.steps.delete(params.token); return { released: true };
+      case 'task.cleanup': this.releaseSteps(params.id); return { released: true };
       case 'private.action':
         if (this.steps.get(params.turnToken)?.id !== params.id) throw new Error('This private turn is not admitted.');
         if (this.store.state.actions[params.token]) throw new Error('This invocation already has a receipt; it was not replayed.');
@@ -219,6 +226,16 @@ export class Coordinator {
     } finally { this.running = false; }
     return true;
   }
+  // Nearest future wake/retry among active reflections; null when none is scheduled.
+  nextWakeTime() {
+    let next = null;
+    for (const row of this.store.list()) {
+      if (row.kind !== 'reflection' || row.status !== 'active' || row.blocked) continue;
+      const at = row.retryAt ?? row.nextWake;
+      if (Number.isFinite(at) && (next === null || at < next)) next = at;
+    }
+    return next;
+  }
   completeStep(id, result) {
     this.store.change(() => {
       const current = this.store.row(id);
@@ -276,13 +293,26 @@ export async function startService(config, options = {}) {
       return closed;
     };
     coordinator.requestStop = () => { setImmediate(() => void close()); };
+    // Event-driven: run due reflections back-to-back, then sleep until a gate
+    // wake (new reflection, chat idle, pause toggle) or the nearest retry timer.
     const pump = async () => {
-      if (closing) return;
-      try { await coordinator.tick(); }
-      catch (error) { coordinator.errors.set('service', error.message); }
-      if (!closing) timer = setTimeout(pump, 25);
+      while (!closing) {
+        let ran = false;
+        try { ran = await coordinator.tick(); }
+        catch (error) { coordinator.errors.set('service', error.message); }
+        if (closing) break;
+        if (ran) continue;
+        const next = coordinator.nextWakeTime();
+        timer = next === null ? null : setTimeout(() => coordinator.gate.wake(), Math.max(0, next - Date.now()));
+        timer?.unref?.();
+        const waiting = coordinator.gate.wait(coordinator.signal).catch(() => {});
+        // Re-check after registering so a wake between tick and wait is not lost.
+        if (!coordinator.store.state.paused && !coordinator.gate.busy() && coordinator.store.due().length) coordinator.gate.wake();
+        await waiting;
+        if (timer) clearTimeout(timer);
+      }
     };
-    if (options.schedule !== false) timer = setTimeout(pump, 0);
+    if (options.schedule !== false) void pump();
     return { coordinator, server, close };
   } catch (error) {
     server?.close(); releaseLock(); throw error;
