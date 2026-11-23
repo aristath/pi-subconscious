@@ -52,7 +52,7 @@ test('optional daily starts and quiet periods leave ordinary tasks unchanged and
   assert.equal(await scheduler.tick(),true);
   assert.deepEqual(order,['ordinary.js']);
   await unlink(join(f.users[0].folder,'tasks/ordinary.js'));
-  await scheduler.gate.foreground('chat',{pid:process.pid});
+  scheduler.gate.update('chat',{pid:process.pid,busy:true});
   f.setTime(Date.UTC(2026,1,1,3,45)); // Reply finishes at 05:45, with no cutoff.
   assert.equal(await scheduler.tick(),false);
   scheduler.gate.remove('chat');
@@ -81,7 +81,7 @@ test('chat activity during task admission restarts the requested quiet period', 
   const scheduler=new TaskScheduler({...f.options,execute:async task=>order.push(task.name)});
   await scheduler.pending();f.advance(600000);
   const [task]=await scheduler.pending();
-  await scheduler.gate.foreground('chat',{pid:process.pid});
+  scheduler.gate.update('chat',{pid:process.pid,busy:true});
   const waiting=scheduler.run(task);
   f.advance(300000);scheduler.gate.remove('chat');await waiting;
   assert.deepEqual(order,[]);
@@ -126,8 +126,8 @@ test('all frontend chats have priority and a running task waits between calls', 
   assert.equal(await scheduler.tick(),false);
   scheduler.gate.remove('frontend-first');
   const work=scheduler.tick();await first.promise;
-  const chat=scheduler.gate.foreground('frontend-second',{pid:process.pid,busy:true}).then(()=>order.push('chat admitted'));
-  finish.resolve();await chat;
+  scheduler.gate.update('frontend-second',{pid:process.pid,busy:true});order.push('chat admitted');
+  finish.resolve();
   assert.deepEqual(order,['first call','chat admitted']);
   scheduler.gate.remove('frontend-second');
   await second.promise;await work;await scheduler.close();
@@ -154,7 +154,7 @@ test('manual requests survive restart, stay with their owner and wait for chat w
   let scheduler = new TaskScheduler({ ...f.options, execute: async task => seen.push(task.user.id) });
   await scheduler.pending();
   const scheduled = structuredClone(scheduler.state(f.users[0].folder).value.tasks['manual.js']);
-  await scheduler.gate.foreground('chat', { pid: process.pid });
+  scheduler.gate.update('chat', { pid: process.pid, busy: true });
   const receipt = await scheduler.request('first', 'manual.js', 'first-invocation');
   assert.equal(receipt.status, 'queued');
   assert.deepEqual(await scheduler.request('first', 'manual.js', 'first-invocation'), receipt);
@@ -166,7 +166,7 @@ test('manual requests survive restart, stay with their owner and wait for chat w
   await assert.rejects(scheduler.request('missing-user', 'manual.js', 'bad-owner'), /owner/);
   await scheduler.close();
   scheduler = new TaskScheduler({ ...f.options, tickMs: 86400000, execute: async task => seen.push(task.user.id) });
-  await scheduler.gate.foreground('chat', { pid: process.pid });
+  scheduler.gate.update('chat', { pid: process.pid, busy: true });
   scheduler.start();
   await until(() => scheduler.gate.jobs.length === 2);
   scheduler.gate.remove('chat');

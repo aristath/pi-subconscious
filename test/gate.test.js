@@ -6,7 +6,7 @@ import { deferred } from './helpers.js';
 test('foreground is admitted immediately even mid-step and blocks further steps until idle', async () => {
   const gate = new Gate();
   const release = await gate.privateStep('model', 'private-model');
-  await gate.foreground('user', { pid: 123, file: 'synthetic', sessionId: 's' });
+  gate.update('user', { pid: 123, busy: true, file: 'synthetic', sessionId: 's' });
   assert.equal(gate.busy(), true, 'foreground registers busy without waiting for the active step');
   let entered = false;
   const next = gate.privateStep('tool', 'pending-tool').then(release => { entered = true; return release; });
@@ -20,7 +20,7 @@ test('foreground is admitted immediately even mid-step and blocks further steps 
 
 test('multiple foreground sessions must all be idle before private work resumes', async () => {
   const gate = new Gate();
-  await gate.foreground('one', { pid: 123 }); await gate.foreground('two', { pid: 124 });
+  gate.update('one', { pid: 123, busy: true }); gate.update('two', { pid: 124, busy: true });
   let entered = false;
   const next = gate.privateStep('model', 'private').then(release => { entered = true; return release; });
   gate.remove('one'); await Promise.resolve(); assert.equal(entered, false);
@@ -39,13 +39,11 @@ test('pause lets an active step settle and retains waiting work until resumed', 
   paused = false; gate.wake(); (await next)(); assert.equal(resumed, true);
 });
 
-test('stale live hosts keep their busy claim; dead hosts are removed', async () => {
+test('live hosts keep their busy claim; crashed hosts are pruned at admission', async () => {
   const gate = new Gate(() => false, pid => pid === 1);
   gate.update('live', { pid: 1, busy: true }); gate.update('dead', { pid: 2, busy: true });
-  for (const client of gate.clients.values()) client.seen = 0;
-  gate.sweep(1);
-  assert.equal(gate.clients.has('live'), true); assert.equal(gate.clients.has('dead'), false);
   assert.equal(gate.busy(), true);
+  assert.equal(gate.clients.has('live'), true); assert.equal(gate.clients.has('dead'), false);
   gate.remove('live'); assert.equal(gate.busy(), false);
 });
 

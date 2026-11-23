@@ -17,19 +17,17 @@ export class Gate {
   update(id, data) {
     if (!id || !Number.isInteger(data.pid) || data.pid <= 0) throw new Error('Invalid foreground registration');
     if (this.clients.get(id)?.busy && data.busy === false) this.lastForegroundEnd = this.now();
-    this.clients.set(id, { ...this.clients.get(id), ...data, seen: Date.now() });
+    this.clients.set(id, { ...this.clients.get(id), ...data });
     this.wake();
   }
   remove(id) { if (this.clients.get(id)?.busy) this.lastForegroundEnd = this.now(); this.clients.delete(id); this.wake(); }
-  sweep(staleMs) {
-    for (const [id, client] of this.clients) {
-      // A live process with a lost heartbeat may still be generating. Retain its
-      // busy claim; inspection/explicit unregister can resolve a stale live host.
-      if (Date.now() - client.seen > staleMs && !this.isAlive(client.pid)) this.remove(id);
-    }
-    this.wake();
+  // A busy claim belongs to a live process. Registrations are event-driven
+  // (run start/settle, shutdown, worker exit); a crashed owner is detected by
+  // pid liveness when background work next asks for admission — no heartbeat.
+  prune() {
+    for (const [id, client] of this.clients) if (client.busy && !this.isAlive(client.pid)) this.remove(id);
   }
-  busy() { return [...this.clients.values()].some(client => client.busy); }
+  busy() { this.prune(); return [...this.clients.values()].some(client => client.busy); }
   async background(id, work, signal) {
     const job = { id };
     this.jobs.push(job);
@@ -38,14 +36,6 @@ export class Gate {
       if (this.stopping || signal?.aborted) throw new Error('Service stopping');
       return await work();
     } finally { this.jobs.splice(this.jobs.indexOf(job), 1); this.wake(); }
-  }
-  // Foreground sessions only register a busy claim; they never wait for
-  // background work. Queueing concurrent inference is the model backend's
-  // job, so this gate stays hardware-agnostic. The busy claim still lets
-  // private steps yield to active chats before starting.
-  async foreground(id, data, signal) {
-    this.update(id, { ...data, busy: true });
-    if (this.stopping || signal?.aborted) throw new Error('Service stopping');
   }
   async privateStep(kind, id, signal, paused = this.paused) {
     while (this.active || paused() || this.busy()) await this.wait(signal);

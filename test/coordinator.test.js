@@ -180,10 +180,9 @@ test('socket service permits one coordinator and handles multiple clients withou
   assert.equal((await two.call('status')).paused, true);
 });
 
-test('host-managed clients reconnect but never start a competing daemon', async t => {
-  const { config } = fixture(t, { initiallyPaused: true, autoStart: false });
+test('host-managed clients connect to the running coordinator and never start a process', async t => {
+  const { config } = fixture(t, { initiallyPaused: true });
   const client = new Client(config);
-  client.start = () => assert.fail('Started a competing daemon');
   await assert.rejects(client.ensure(), /managed by the host application/);
   const service = await startService(config, { schedule: false });
   try { await client.ensure(); assert.equal((await client.call('status')).paused, true); }

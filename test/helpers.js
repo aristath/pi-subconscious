@@ -45,7 +45,7 @@ export function fixture(t, overrides = {}) {
   const model = id => ({ id, name: id, reasoning: false, input: ['text', 'image'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 262144, maxTokens: 4096 });
   writeFileSync(join(agentDir, 'models.json'), JSON.stringify({ providers: { synthetic: { api: 'openai-completions', baseUrl: 'http://synthetic.invalid/v1', apiKey: 'synthetic-test-value', models: [model('default'), model('override')] } } }));
   const path = join(workspace, '.pi', 'settings.json');
-  const raw = { dataDir: join(workspace, 'subconscious'), initialRestMs: 0, heartbeatMs: 100, staleClientMs: 500, ...overrides };
+  const raw = { dataDir: join(workspace, 'subconscious'), initialRestMs: 0, ...overrides };
   const settings = { defaultProvider: 'synthetic', defaultModel: 'default', cacheWarming: 'off', retry: { enabled: false }, compaction: { enabled: false }, skills: ['!**'], subconscious: raw };
   writeFileSync(join(agentDir, 'settings.json'), JSON.stringify(settings));
   writeFileSync(path, JSON.stringify({ subconscious: raw }));

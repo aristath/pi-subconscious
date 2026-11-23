@@ -79,9 +79,8 @@ Pass the same `gate` to `TaskScheduler` and each reflection `startService(config
 to share one FIFO background queue across users. A background job keeps its place
 while no chat is active. Pi handles tool execution, compaction,
 retry and cancellation; tools do not acquire scheduling locks.
-Set `subconscious.autoStart: false` in Pi settings when the host owns the
-coordinator, so standalone Pi clients cannot start a competing daemon while it restarts.
-Standalone installations retain automatic daemon startup by default.
+The embedding application owns the coordinator's lifetime; clients connect to
+the running coordinator and never start a competing process.
 
 The foreground `run_task({task: "example.js"})` tool queues an on-demand run
 without changing its regular schedule. Hosts connect it with
@@ -135,25 +134,22 @@ Configure tools in the private execution profile using normal Pi settings.
 Its optional `subconscious.allowedTools` list restricts private reflections to
 those exact names; otherwise they use that profile's active tools.
 
-Heartbeat, stale-client, and error-retry options are
-`heartbeatMs` (3000), `staleClientMs` (15000), and `errorRetryMs` (30000).
+The error-retry option is `errorRetryMs` (30000). Foreground busy claims are
+event-driven (run start/settle, compaction, shutdown); a crashed owner's claim
+is cleared by a pid liveness check when background work next asks for admission.
 
-Run the reflection coordinator from the owner’s profile directory:
-
-```sh
-node /path/to/pi-subconscious/src/cli.js serve --config .pi/settings.json
-```
-
-A host can supply `--agent-dir` to select Pi’s native agent directory. `subconscious.cwd` selects the private execution profile; it does not change the originating owner or coordinator store.
-The supplied [systemd unit](examples/pi-subconscious.service) allows a
-current turn to finish during shutdown. Use an equivalent supervisor when systemd
-is unavailable.
+The embedding application starts the coordinator with `startService(config)`
+and owns its lifetime. `subconscious.cwd` selects the private execution profile;
+it does not change the originating owner or coordinator store. A host can supply
+`--agent-dir` to select Pi’s native agent directory. Shutdown lets a current turn
+finish; use an equivalent supervisor when the host restarts.
 
 ### Controls
 
 `/subconscious status`, `pause`, `resume`, `list`, `read <id>`, `actions`,
 `resolve <JSON>`, and `notifications` use the existing coordinator. The CLI
-supports the same commands, plus `start`, `serve`, `stop`, and `init`.
+supports the same commands, plus `stop` and `ack ID`, against the running
+coordinator.
 
 Pause is durable and lets the current turn finish. It controls chat-triggered
 reflections; the shared scheduled-task queue is configured by the host application.

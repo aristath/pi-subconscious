@@ -173,7 +173,7 @@ export class Coordinator {
         }
       }
       case 'ping': return { pid: process.pid, storeId: this.config.storeId, stopping: this.stopping };
-      case 'status': return { paused: this.store.state.paused, active: this.gate.active, clients: [...this.gate.clients].map(([id, value]) => ({ id, ...value, stale: Date.now() - value.seen > this.config.staleClientMs })), conversations: this.store.list(), pendingDeliveries: Object.values(this.store.state.deliveries).filter(delivery => delivery.status === 'pending').map(delivery => ({ id: delivery.id, sessionId: delivery.source.sessionId, file: delivery.source.file })), missingTools: Object.fromEntries(this.missingTools), errors: Object.fromEntries(this.errors) };
+      case 'status': return { paused: this.store.state.paused, active: this.gate.active, clients: [...this.gate.clients].map(([id, value]) => ({ id, ...value })), conversations: this.store.list(), pendingDeliveries: Object.values(this.store.state.deliveries).filter(delivery => delivery.status === 'pending').map(delivery => ({ id: delivery.id, sessionId: delivery.source.sessionId, file: delivery.source.file })), missingTools: Object.fromEntries(this.missingTools), errors: Object.fromEntries(this.errors) };
       case 'pause': this.store.change(state => { state.paused = params.paused !== false; }); this.gate.wake(); return { paused: this.store.state.paused };
       case 'list': return this.store.list();
       case 'read': return this.inspect(params.id, params);
@@ -181,7 +181,6 @@ export class Coordinator {
       case 'actions': return Object.entries(this.store.state.actions).filter(([, action]) => action.status === 'started').map(([key, action]) => ({ key, ...action, active: this.actionActive(action), resolvable: this.store.row(action.conversationId).blockedAction === key && !this.actionActive(action) }));
       case 'resolve': return this.resolveAction(params);
       case 'foreground.update': this.foreground(params); return { registered: true };
-      case 'foreground.enter': { const data = this.foreground({ ...params, busy: true }); await this.gate.foreground(params.id, data, this.signal); return { admitted: true }; }
       case 'foreground.leave': this.gate.remove(params.id); return { removed: true };
       case 'reflection.create': {
         const client = await this.sourceClient(params.clientId);
@@ -268,7 +267,7 @@ export async function startService(config, options = {}) {
       if (closing) return closed;
       closing = true;
       closed = (async () => {
-        clearTimeout(timer); clearInterval(sweeper);
+        clearTimeout(timer);
         await coordinator.stop();
         await new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); });
         if (process.platform !== 'win32' && existsSync(config.socketPath)) rmSync(config.socketPath);
@@ -283,7 +282,6 @@ export async function startService(config, options = {}) {
       catch (error) { coordinator.errors.set('service', error.message); }
       if (!closing) timer = setTimeout(pump, 25);
     };
-    const sweeper = setInterval(() => coordinator.gate.sweep(config.staleClientMs), config.heartbeatMs);
     if (options.schedule !== false) timer = setTimeout(pump, 0);
     return { coordinator, server, close };
   } catch (error) {

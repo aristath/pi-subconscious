@@ -1,8 +1,4 @@
 import { request } from 'node:http';
-import { spawn } from 'node:child_process';
-import { openSync, closeSync, mkdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
 
 export class Client {
@@ -28,30 +24,14 @@ export class Client {
       req.end(body);
     });
   }
+  // The host application owns the coordinator's lifetime. This only checks
+  // that it is reachable; it never starts a competing process.
   async ensure() {
     try { await this.call('ping'); return; }
-    catch (error) { if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error; }
-    if (this.config.autoStart === false) throw new Error('The reflection coordinator is managed by the host application and is not running.');
-    if (!this.starting) this.starting = this.start().finally(() => { this.starting = null; });
-    return this.starting;
-  }
-  async start() {
-    mkdirSync(this.config.dataDir, { recursive: true, mode: 0o700 });
-    const fd = openSync(join(this.config.dataDir, 'service.log'), 'a', 0o600);
-    const executable = /^node(?:\.exe)?$/.test(basename(process.execPath)) ? process.execPath : 'node';
-    const child = spawn(executable, [fileURLToPath(new URL('./cli.js', import.meta.url)), 'serve', '--config', this.config.configPath, '--agent-dir', this.config.agentDir], { detached: true, stdio: ['ignore', fd, fd], cwd: this.config.workspace });
-    closeSync(fd);
-    child.unref();
-    let spawnError;
-    child.once('error', error => { spawnError = error; });
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      if (spawnError) throw spawnError;
-      try { await this.call('ping', {}, { timeout: 1000 }); return; }
-      catch (error) { if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error; }
-      await new Promise(resolve => setTimeout(resolve, 50));
+    catch (error) {
+      if (['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw new Error('The reflection coordinator is managed by the host application and is not running.');
+      throw error;
     }
-    throw new Error('Coordinator did not start. Inspect the private service.log in dataDir.');
   }
   async connect() { await this.ensure(); return this; }
 }
