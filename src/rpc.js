@@ -11,9 +11,10 @@ export class PiProcess {
     this.pending = new Map(); this.onEvent = onEvent; this.inputTail = Promise.resolve();
     this.child = spawn(command, ['--mode', 'rpc', ...args], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let diagnostic = '';
+    this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', chunk => {
       diagnostic = (diagnostic + chunk).slice(-4096);
-      this.onEvent({ type: 'diagnostic', message: String(chunk) });
+      this.onEvent({ type: 'diagnostic', message: chunk });
     });
     // Buffer stdout on newlines only: JSON content can carry U+2028/U+2029 line
     // separators that readline would treat as line breaks and shred the frame.
@@ -37,7 +38,7 @@ export class PiProcess {
   kill(signal) { return this.child.kill(signal); }
   // Route one stdout line: resolve the matching request, or stream the event to the host.
   handleLine(line) {
-    let event; try { event = JSON.parse(line); } catch { return; }
+    let event; try { event = JSON.parse(line); } catch (error) { this.onEvent({ type: "diagnostic", message: `Could not decode Pi output: ${error.message}` }); return; }
     if (event.type === 'response') {
       const pending = this.pending.get(event.id);
       if (pending) { this.pending.delete(event.id); if (pending.timer) clearTimeout(pending.timer); if (event.success) pending.resolve(event.data); else pending.reject(new Error(event.error)); return; }
