@@ -68,6 +68,13 @@ Optional `@thinking <level>` sets the reasoning level for each inference run:
 native `--thinking` option, is clamped to the model's capabilities, and does
 not change profile or global defaults. Omit it for the profile default.
 
+Optional `@tools` and `@exclude_tools` select the inference run's tools with
+Pi's native `--tools` and `--exclude-tools` flags. `@tools` is a comma-separated
+allowlist; a list of only `+name`/`-name` entries adds to or removes from the
+profile defaults instead. `@exclude_tools` is a comma-separated denylist and
+applies to every tool, MCP tools included. Omit both for the execution
+profile's normal tool selection.
+
 The host application uses `TaskScheduler` from `src/tasks.js` and `runTask` from
 `src/task-runner.js`. Foreground sessions register a busy claim on the scheduler’s
 existing `Gate`; they are never made to wait for background work, so extensions stay

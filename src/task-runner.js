@@ -99,6 +99,7 @@ async function worker(input) {
     const settled = new Promise(resolve => { settle = resolve; });
     peer = new PiProcess({ cwd: input.executionCwd, command: input.piCommand ?? 'pi',
       args: ['--approve', '--session-dir', directory, '--session', file, ...(input.task.model ? ['--model', input.task.model] : []), ...(input.task.thinking ? ['--thinking', input.task.thinking] : []),
+        ...(input.task.tools ? ['--tools', input.task.tools] : []), ...(input.task.exclude_tools ? ['--exclude-tools', input.task.exclude_tools] : []),
         ...(input.task.soul === 'none' ? ['--soul', 'none'] : []),
         '-e', fileURLToPath(new URL('./task-runtime.js', import.meta.url)), '--scheduled-task', input.task.path,
         '--task-owner', input.task.user.id, '--task-name', input.task.name, ...(input.configPath ? ['--subconscious-config', input.configPath] : [])],
@@ -111,7 +112,7 @@ async function worker(input) {
     process.send({ type: 'initialized' });
     const { commands } = await peer.request('get_commands');
     if (!commands.some(command => command.name === 'task-run')) throw new Error('The task extension failed to load.');
-    await peer.request('prompt', { message: '/task-run ' + JSON.stringify({ prompt, owner: { id: input.task.user.id, cwd: input.task.folder, task: input.task.name } }) });
+    await peer.request('prompt', { message: `/task-run ${JSON.stringify({ prompt, owner: { id: input.task.user.id, cwd: input.task.folder, task: input.task.name } })}` });
     await Promise.race([settled, peer.exited.then(() => { throw new Error('Task Pi stopped before settling.'); })]);
     if (failure) throw failure;
     const { messages } = await peer.request('get_messages'), last = messages.findLast(message => message.role === 'assistant');

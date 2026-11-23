@@ -53,7 +53,10 @@ export function taskHeader(source) {
   if (fields.soul !== undefined && fields.soul !== 'none') throw new Error('Use @soul none to disable SOUL loading, or omit it to use the execution profile.');
   const thinkingLevels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
   if (fields.thinking !== undefined && !thinkingLevels.includes(fields.thinking)) throw new Error('@thinking must be one of: off, minimal, low, medium, high, xhigh, max.');
-  return { ...schedule, mode: fields.mode, session, ...(fields.model !== undefined ? { model: fields.model } : {}), ...(fields.soul !== undefined ? { soul: fields.soul } : {}), ...(fields.thinking !== undefined ? { thinking: fields.thinking } : {}) };
+  // Pi's native tool selection flags: an allowlist may add/remove from the defaults (+name/-name).
+  if (fields.tools !== undefined && !/^[\w+\-]+(\s*,\s*[\w+\-]+)*$/.test(fields.tools)) throw new Error('@tools must be a comma-separated list of tool names, optionally +name/-name.');
+  if (fields.exclude_tools !== undefined && !/^[\w\-]+(\s*,\s*[\w\-]+)*$/.test(fields.exclude_tools)) throw new Error('@exclude_tools must be a comma-separated list of tool names.');
+  return { ...schedule, mode: fields.mode, session, ...(fields.model !== undefined ? { model: fields.model } : {}), ...(fields.soul !== undefined ? { soul: fields.soul } : {}), ...(fields.thinking !== undefined ? { thinking: fields.thinking } : {}), ...(fields.tools !== undefined ? { tools: fields.tools } : {}), ...(fields.exclude_tools !== undefined ? { exclude_tools: fields.exclude_tools } : {}) };
 }
 
 const inside = (root, path) => { const part = relative(root, path); return part !== '..' && !part.startsWith('../') && !isAbsolute(part); };
